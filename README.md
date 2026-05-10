@@ -1,15 +1,15 @@
 # SimpleMLP
 
-A simple Multi-Layer Perceptron (MLP) implementation in C++ from scratch.
+a simple multi-layer (MLP) implementation in c++ from scratch.
 
 ### Features
-- **Backpropagation:** Manual implementation of gradient descent.
-- **Pure C++:** No external libraries, uses only standard headers.
-- **Optimization:** Uses constant references for performance.
-- **Randomization:** Weights initialized via `std::mt19937`.
+- **backpropagation:** manual implementation of gradient descent
+- **pure c++:** no external libraries
+- **optimization:** uses constant references for performance
+- **randomization:** weights initialized via `std::mt19937`
 
-### Usage
-Compile with any C++11 compiler:
+### usage
+compile with any c++ compiler:
 ```bash
 g++ main.cpp -o SimpleMLP
 ./SimpleMLP
