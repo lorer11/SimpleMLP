@@ -3,120 +3,126 @@
 #include <cmath>
 #include <random>
 
-    float sigmoid(float x) {
-        return 1.0f / (1.0f + exp(-x));
-    }
+struct Layer {
+	std::vector<std::vector<float>> weights;
+	std::vector<float>results;
+	std::vector<float>errors;
+	
+	void init_layer_size(int num_neurons, int num_inputs){
+		results.resize(num_neurons);
+		errors.resize(num_neurons);
+		weights.resize(num_neurons);
+		std::random_device rd;
+		std::mt19937 gen(rd());
+		std::uniform_real_distribution<float> dis(0.0f, 1.0f);
 
-	float calculate_neuron(const std::vector<float>& inputs, const std::vector<float>& weights, int size) {
-		float sum = 0.0f;
-		for (int i = 0; i < size; i++) {
-			sum += inputs[i] * weights[i];
+		for (int i = 0; i < num_neurons; i++) {
+			weights[i].resize(num_inputs);
+			for (int j = 0; j < num_inputs; j++) {
+				weights[i][j] = dis(gen);
+			}
 		}
-        return sigmoid(sum);
 	}
+	float relu_d(float x) {
+		if (x > 0) return 1.0f;
+		return 0.0f;
+	}
+	void calculate_all_neuron_in_layer(const std::vector<std::vector<float>>& weights, const std::vector<float>& inputs, std::vector<float>& results, int num_neuron) {
+		for (int j = 0; j < num_neuron; j++) {
+			float sum = 0.0f;
+			for (int i = 0; i < weights[j].size(); i++) {
+				sum += weights[j][i] * inputs[i];
+			}
+			results[j] = (sum > 0.0f) ? sum : 0.0f;
+		}
+	}
+	void calculate_error_in_last_layer(std::vector<float>& errors, const std::vector<float>& targets, const std::vector<float>& results) {
+		for (int i = 0; i < results.size(); i++) {
+			errors[i] = 2 * (results[i] - targets[i]);
+		}
+	}
+	void calculate_all_error_in_layer(std::vector<float>& errors, const std::vector<float>& errors_next, const std::vector<float>& results, const std::vector<std::vector<float>>& next_weights) {
+		for (int i = 0; i < errors.size(); i++) {
+			float sum = 0.0f;
+			for (int j = 0; j < errors_next.size(); j++) {
+				sum += errors_next[j] * next_weights[j][i];
+			}
+			errors[i] = sum * relu_d(results[i]);
+		}
+	}
+	void educate_all_neurons_in_layer(float leaning_rate, const std::vector<float>& errors, const std::vector<float>& results, const std::vector<float>& inputs, std::vector<std::vector<float>>& weights) {
+		for (int i = 0; i < results.size(); i++) {
+			float gradient = errors[i] * relu_d(results[i]);
+			for (int j = 0; j < inputs.size(); j++) {
+				weights[i][j] -= leaning_rate * gradient * inputs[j];
+			}
+		}
+	}
+};
 
-    struct Layer {
-        std::vector<std::vector<float>> weights;
-        std::vector<float> errors;
-        std::vector<float> results;
-        std::vector<float> inputs;
+struct Layers {
+	std::vector<Layer>layers;
 
+	void init_all_layers(const std::vector<int>& config, const std::vector<float>& first_inputs) {
+		layers[0].init_layer_size(config[0], first_inputs.size());
+		for (int i = 1; i < config.size(); i++) {
+			layers[i].init_layer_size(config[i], config[i - 1]);
+		}
+	}
+	void calculate_neuron_in_all_layer(const std::vector<int>& config, const std::vector<float>& first_inputs) {
+		layers[0].calculate_all_neuron_in_layer(layers[0].weights, first_inputs, layers[0].results, layers[0].results.size());
+		for (int i = 1; i < config.size(); i++) {
+			layers[i].calculate_all_neuron_in_layer(layers[i].weights, layers[i - 1].results, layers[i].results, layers[i].results.size());
+		}
+	}
+	void calculate_error_in_all_layer(const std::vector<int>& config, const std::vector<float>& targets) {
+		int last = config.size() - 1;
+		layers[last].calculate_error_in_last_layer(layers[last].errors, targets, layers[last].results);
+		for (int i = config.size() - 2; i >= 0; i--) {
+			layers[i].calculate_all_error_in_layer(layers[i].errors, layers[i+1].errors, layers[i].results, layers[i + 1].weights);
+		}
+	}
+	void educate_neurons_in_all_layer(const std::vector<int>& config, float leaning_rate, const std::vector<float>& first_inputs) {
+		layers[0].educate_all_neurons_in_layer(leaning_rate, layers[0].errors, layers[0].results, first_inputs, layers[0].weights);
+		for (int i = 1; i < config.size(); i++) {
+			layers[i].educate_all_neurons_in_layer(leaning_rate ,layers[i].errors, layers[i].results, layers[i-1].results, layers[i].weights);
+		}
+	}
+	void init(const std::vector<int>& config, const std::vector<float>& first_inputs) {
+		layers.resize(config.size());
+		init_all_layers(config, first_inputs);
+	}
+	void train(const std::vector<int>& config, const std::vector<float>& first_inputs, const std::vector<float>& targets, float leaning_rate) {
+		for (int i = 0; i < layers.size(); i++) {
+			layers[i].results.assign(layers[i].results.size(), 0.0f);
+			layers[i].errors.assign(layers[i].errors.size(), 0.0f);
+		}
+		calculate_neuron_in_all_layer(config, first_inputs);
+		calculate_error_in_all_layer(config, targets);
+		educate_neurons_in_all_layer(config, leaning_rate, first_inputs);
+	}
+};
 
-        void init(int n_neurons, int n_inputs) {
-            errors.resize(n_neurons);
-            results.resize(n_neurons);
-            weights.resize(n_neurons);
+int main() {
+	Layers net;
+	std::vector<int> config = { 4, 2, 2};
+	std::vector<float> input = { 1.0f, 0.5f };
+	std::vector<float> target = { 5.0f, 3.0f};
+	net.init(config, input);
 
-            std::random_device rd;
-            std::mt19937 gen(rd());
-            std::uniform_real_distribution<float> dis(-0.5f, 0.5f);
+	for (int epoch = 0; epoch < 1000; epoch++) {
+		net.train(config, input, target, 0.01f);
 
-            for (int i = 0; i < n_neurons; i++) {
-                weights[i].resize(n_inputs);
-                for (int j = 0; j < n_inputs; j++) {
-                    weights[i][j] = dis(gen);
-                }
-            }
-        }
-        void calculate_layer(int num_neurons, int num_inputs) {
-            for (int i = 0; i < num_neurons; i++) {
-                results[i] = calculate_neuron(inputs, weights[i], num_inputs);
-            }
-        }
+		if (epoch % 10 == 0) {
+			std::cout << "epoch: " << epoch << " / ";
 
-        void educate_layers(const std::vector<float>& results, std::vector<std::vector<float>>& weights, const std::vector<float>& inputs, const std::vector<float>& errors, float lr) {
-            for (int i = 0; i < results.size(); i++) {
-                float sigmoid_deriv = results[i] * (1 - results[i]);
-                float gradient = errors[i] * sigmoid_deriv;
-                for (int j = 0; j < weights[i].size(); j++) {
-                    weights[i][j] -= lr * gradient * inputs[j];
-                }
-            }
-        }
-        void calculate_errors(std::vector<int> config, int current_layer_size, int next_layer_size, std::vector<float>next_layer_errors, std::vector<float>current_results, std::vector<std::vector<float>> weights) {
-            for (int i = 0; i < current_layer_size; i++) {
-                float sum_error = 0.0;
-                for (int j = 0; j < next_layer_size; j++) {
-                    sum_error += next_layer_errors[j] * weights[j][i];
-                }
+			const std::vector<float>& final_results = net.layers.back().results;
+			for (size_t i = 0; i < final_results.size(); ++i) {
+				std::cout << "result " << (i + 1) << ": " << final_results[i] << "    ";
+			}
 
-                float res = current_results[i];
-                errors[i] = sum_error * (res * (1.0f - res));
-            }
-        }
-    };
-
-        struct NeuralNetwork {
-            std::vector<Layer> layers;
-
-            void count_the_layer(const std::vector<int>& config, int first_inputs) {
-                layers.resize(config.size());
-                layers[0].init(config[0], first_inputs);
-                for (int i = 1; i < config.size(); i++ ){
-                    layers[i].init(config[i], config[i-1]);
-
-                }
-            }
-            void calculate_result(std::vector<int> config, int first_inputs) {
-                layers[0].calculate_layer(config[0], first_inputs);
-                for (int i = 1; i < layers.size(); i++) {
-                    layers[i].inputs = layers[i - 1].results;
-                    layers[i].calculate_layer(config[i], config[i - 1]);
-                }
-            }
-            void calculate_all_layers_errors(std::vector<int> config, int target, float last_res) {
-                float last = config.size() - 1;
-                layers[last].errors[0] = 2 * (last_res - target) * (last_res * (1.0f - last_res));
-                for (int i = last - 1; i > 0; i--) {
-                    layers[i].calculate_errors(config, layers[i].results.size(), layers[i+1].results.size(), layers[i+1].errors, layers[i].results, layers[i+1].weights);
-                }
-            }
-            void train(int target, std::vector<float> first_inputs, std::vector<int> config, float lr) {
-                layers[0].inputs = first_inputs;
-                calculate_result(config, first_inputs.size());
-                float actual_res = layers.back().results[0];
-                calculate_all_layers_errors(config, target, actual_res);
-                for (int i = 0; i < layers.size(); i++) {
-                    layers[i].educate_layers(layers[i].results, layers[i].weights, layers[i].inputs, layers[i].errors, lr);
-                }
-            }
-        };
-
-        int main() {
-            std::vector<int> config = { 2, 5, 1 };
-            NeuralNetwork nn;
-
-            nn.count_the_layer(config, 2);
-
-            std::vector<float> input = { 0.5f, 0.1f };
-            int target = 1;
-            float lr = 0.05f;
-
-            for (int i = 0; i < 10000; i++) {
-                nn.train(target, input, config, lr);
-
-                if (i % 100 == 0) {
-                    std::cout << "Epoch " << i << " Output: " << nn.layers.back().results[0] << std::endl;
-                }
-            }
-        }
+			std::cout << std::endl;
+		}
+	}
+	return 0;
+}
